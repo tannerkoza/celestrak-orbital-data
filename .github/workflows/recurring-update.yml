@@ -26,44 +26,38 @@ jobs:
       - name: Run update script
         run: bash ./update.sh
 
-      - name: Upload generated files via GitHub API
+      - name: Force upload all files via GitHub API
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           REPO="${{ github.repository }}"
           BRANCH="main"
-          COMMIT_MSG="Automated constellation data update via API"
+          COMMIT_MSG="Force update of constellation files"
 
           find . -type f \( -name "*.xml" -o -name "*.tle" \) | while read -r FILE; do
-            FILE_PATH="${FILE#./}"  # Remove ./ prefix
+            FILE_PATH="${FILE#./}"  # Strip ./ prefix
             ENCODED_CONTENT=$(base64 -w 0 "$FILE")
             JSON_BODY="payload.json"
 
-            # Try to get SHA if the file exists
+            # Fetch SHA if file exists, else blank
             SHA=$(gh api -H "Accept: application/vnd.github+json" \
-                  repos/$REPO/contents/$FILE_PATH \
-                  --jq .sha 2>/dev/null || true)
+              repos/$REPO/contents/$FILE_PATH \
+              --jq .sha 2>/dev/null || echo "")
 
-            echo "Uploading $FILE_PATH"
+            echo "Uploading $FILE_PATH (overwrite if exists)"
 
-            if [ -n "$SHA" ]; then
-              jq -n \
-                --arg message "$COMMIT_MSG" \
-                --arg content "$ENCODED_CONTENT" \
-                --arg branch "$BRANCH" \
-                --arg sha "$SHA" \
-                '{message: $message, content: $content, branch: $branch, sha: $sha}' \
-                > "$JSON_BODY"
-            else
-              jq -n \
-                --arg message "$COMMIT_MSG" \
-                --arg content "$ENCODED_CONTENT" \
-                --arg branch "$BRANCH" \
-                '{message: $message, content: $content, branch: $branch}' \
-                > "$JSON_BODY"
-            fi
+            jq -n \
+              --arg message "$COMMIT_MSG" \
+              --arg content "$ENCODED_CONTENT" \
+              --arg branch "$BRANCH" \
+              --arg sha "$SHA" \
+              '{
+                message: $message,
+                content: $content,
+                branch: $branch
+              } + (if $sha != "" then {sha: $sha} else {})' \
+              > "$JSON_BODY"
 
-            # Upload the file via GitHub REST API
             gh api --method PUT \
               -H "Accept: application/vnd.github+json" \
               --input "$JSON_BODY" \
