@@ -1,23 +1,35 @@
 name: recurring-update
+
 on:
   workflow_dispatch:
   schedule:
     - cron: "*/15 * * * *"
+
 jobs:
   update:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout only update.sh
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
           sparse-checkout: |
-            ./update.sh
-      - name: update
+            update.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Run update script
         run: ./update.sh
-      - name: push
+
+      - name: Enable full working tree after update
+        run: |
+          git sparse-checkout set --no-cone '*'  # allow any file
+          git read-tree -mu HEAD                 # re-sync working dir
+
+      - name: Configure Git and push if changed
         run: |
           git config --global user.name "github-actions"
-          git config --global user.email ""
-          git sparse-checkout add .
+          git config --global user.email "actions@github.com"
+          git add .
           git diff-index --quiet HEAD || git commit -m "celestrak update"
           git push
