@@ -14,9 +14,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          sparse-checkout: |
-            update.sh
-          sparse-checkout-cone-mode: false
 
       - name: Run update.sh
         run: ./update.sh
