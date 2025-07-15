@@ -18,13 +18,15 @@ jobs:
           sparse-checkout-cone-mode: false
           fetch-depth: 1
 
-      - name: Install GitHub CLI
-        run: sudo apt-get install -y gh
+      - name: Install GitHub CLI and jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh jq
 
       - name: Run update script
         run: bash ./update.sh
 
-      - name: Upload files to GitHub via API
+      - name: Upload generated files via GitHub API
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -32,32 +34,36 @@ jobs:
           BRANCH="main"
           COMMIT_MSG="Automated constellation data update via API"
 
-          for FILE in $(find . -type f \( -name "*.xml" -o -name "*.tle" \)); do
-            FILE_PATH="${FILE#./}"
+          find . -type f \( -name "*.xml" -o -name "*.tle" \) | while read -r FILE; do
+            FILE_PATH="${FILE#./}"  # Strip ./ prefix
             ENCODED_CONTENT=$(base64 -w 0 "$FILE")
             JSON_BODY="payload.json"
+
+            # Get SHA if file exists
             SHA=$(gh api -H "Accept: application/vnd.github+json" \
                   repos/$REPO/contents/$FILE_PATH \
                   --jq .sha 2>/dev/null || true)
-          
+
             echo "Uploading $FILE_PATH"
-          
-            # Build JSON payload
+
+            # Build JSON payload safely
             jq -n \
               --arg msg "$COMMIT_MSG" \
               --arg content "$ENCODED_CONTENT" \
               --arg branch "$BRANCH" \
-              --argjson sha "$(jq -Rn --arg sha "$SHA" '$sha // empty')" \
+              --arg sha "$SHA" \
               '{
                 message: $msg,
                 content: $content,
                 branch: $branch
-              } + (if $sha != "" then {sha: $sha} else {} end)' > "$JSON_BODY"
-          
-            # Send it via gh api using --input
+              } + (if $sha != "" then {sha: $sha} else {})' > "$JSON_BODY"
+
+            # Upload via GitHub REST API
             gh api --method PUT \
               -H "Accept: application/vnd.github+json" \
               --input "$JSON_BODY" \
               "repos/$REPO/contents/$FILE_PATH"
+          done
+
 
 
