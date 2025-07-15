@@ -2,7 +2,7 @@ name: recurring-update
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *"  # Fixed: added missing closing quote and fields
+    - cron: "*/15 * * * *"
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -20,7 +20,6 @@ jobs:
           sudo apt-get install -y gh jq
       - name: Run update script
         run: bash ./update.sh
-        
       - name: Force upload all files via GitHub API
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -29,27 +28,23 @@ jobs:
           BRANCH="main"
           COMMIT_MSG="Force update of constellation files"
           find . -type f \( -name "*.xml" -o -name "*.tle" \) | while read -r FILE; do
-            FILE_PATH="${FILE#./}"  # Remove leading './' from path
+            FILE_PATH="${FILE#./}"
             echo "Uploading $FILE_PATH (overwrite if exists)"
             
-            # Base64 encode the file content
             base64 -w 0 "$FILE" > encoded_content.tmp
             
-            # Fetch SHA if file exists; empty if not
             SHA=$(gh api -H "Accept: application/vnd.github+json" \
               repos/$REPO/contents/$FILE_PATH \
               --jq .sha 2>/dev/null || echo "")
             
-            # Create JSON payload using a template file approach
             cat > payload_template.json << 'EOF'
-{
-  "message": "",
-  "content": "",
-  "branch": ""
-}
-EOF
+          {
+            "message": "",
+            "content": "",
+            "branch": ""
+          }
+          EOF
             
-            # Build the JSON payload by reading from files
             if [ -z "$SHA" ]; then
               jq \
                 --arg message "$COMMIT_MSG" \
@@ -59,13 +54,13 @@ EOF
                 payload_template.json > payload.json
             else
               cat > payload_template.json << 'EOF'
-{
-  "message": "",
-  "content": "",
-  "branch": "",
-  "sha": ""
-}
-EOF
+          {
+            "message": "",
+            "content": "",
+            "branch": "",
+            "sha": ""
+          }
+          EOF
               jq \
                 --arg message "$COMMIT_MSG" \
                 --arg branch "$BRANCH" \
@@ -75,12 +70,10 @@ EOF
                 payload_template.json > payload.json
             fi
             
-            # Actually upload the file
             gh api -X PUT \
               -H "Accept: application/vnd.github+json" \
               repos/$REPO/contents/$FILE_PATH \
               --input payload.json
               
-            # Clean up temporary files
             rm -f encoded_content.tmp payload_template.json payload.json
           done
