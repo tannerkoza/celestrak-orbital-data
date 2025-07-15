@@ -24,35 +24,50 @@ jobs:
       - name: Install GitHub CLI
         run: sudo apt-get install gh -y
 
-      - name: Commit new or changed files via GitHub API
+      - name: Commit new or changed files via GitHub API safely
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           branch="${GITHUB_REF#refs/heads/}"
       
           find . -type f -not -path "./.git/*" -not -name ".gitkeep" | while read -r file; do
-            echo "Checking $file"
+            echo "Processing $file"
       
-            # Encode content
+            # Get base64 content of local file
             content=$(base64 -w 0 "$file")
+      
+            # Get remote file info; ignore errors if file doesn't exist
             response=$(gh api -X GET "/repos/${{ github.repository }}/contents/$file?ref=$branch" || true)
             sha_remote=$(echo "$response" | jq -r '.sha // empty')
             content_remote=$(echo "$response" | jq -r '.content // empty' | tr -d '\n')
       
-            content_local_base64=$(cat "$file" | base64 -w 0)
-            if [[ "$content_local_base64" == "$content_remote" ]]; then
-              echo "No change in $file, skipping."
+            # Skip commit if content is unchanged
+            if [ "$content" = "$content_remote" ]; then
+              echo "No changes in $file, skipping commit."
               continue
             fi
       
             echo "Committing $file"
-            gh api \
-              -X PUT \
+      
+            # Prepare JSON payload in a temp file
+            json_payload=$(mktemp)
+            jq -n \
+              --arg msg "Update $file" \
+              --arg content "$content" \
+              --arg branch "$branch" \
+              --arg sha "$sha_remote" \
+              '{
+                message: $msg,
+                content: $content,
+                branch: $branch
+              } + ( $sha | length > 0 and {sha: $sha} )' > "$json_payload"
+      
+            # Push commit with JSON payload input
+            gh api -X PUT \
               -H "Accept: application/vnd.github+json" \
               "/repos/${{ github.repository }}/contents/$file" \
-              -f message="Update $file" \
-              -f content="$content" \
-              ${sha_remote:+-f sha=$sha_remote} \
-              -f branch="$branch"
+              --input "$json_payload"
+      
+            rm "$json_payload"
           done
 
