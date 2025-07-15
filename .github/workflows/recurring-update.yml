@@ -25,7 +25,7 @@ jobs:
 
       - name: Run update script
         run: bash ./update.sh
-
+        
       - name: Force upload all files via GitHub API
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -35,11 +35,11 @@ jobs:
           COMMIT_MSG="Force update of constellation files"
 
           find . -type f \( -name "*.xml" -o -name "*.tle" \) | while read -r FILE; do
-            FILE_PATH="${FILE#./}"  # Strip ./ prefix
+            FILE_PATH="${FILE#./}"  # Remove leading './' from path
             ENCODED_CONTENT=$(base64 -w 0 "$FILE")
             JSON_BODY="payload.json"
 
-            # Fetch SHA if file exists, else blank
+            # Fetch SHA if file exists; empty if not
             SHA=$(gh api -H "Accept: application/vnd.github+json" \
               repos/$REPO/contents/$FILE_PATH \
               --jq .sha 2>/dev/null || echo "")
