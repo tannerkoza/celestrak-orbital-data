@@ -29,28 +29,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           branch="${GITHUB_REF#refs/heads/}"
-          for file in $(find . -type f -not -path "./.git/*" -not -name ".gitkeep"); do
+      
+          find . -type f -not -path "./.git/*" -not -name ".gitkeep" | while read -r file; do
             echo "Checking $file"
       
             # Encode content
             content=$(base64 -w 0 "$file")
-            sha_local=$(sha1sum "$file" | awk '{print $1}')
-      
-            # Try to get file metadata from GitHub
             response=$(gh api -X GET "/repos/${{ github.repository }}/contents/$file?ref=$branch" || true)
-      
-            # Extract SHA of existing file (if any)
             sha_remote=$(echo "$response" | jq -r '.sha // empty')
             content_remote=$(echo "$response" | jq -r '.content // empty' | tr -d '\n')
       
-            # Decode and compare (GitHub returns base64 content)
-            if [[ -n "$sha_remote" ]]; then
-              # Compare base64 content instead of file hash
-              content_local_base64=$(cat "$file" | base64 -w 0)
-              if [[ "$content_local_base64" == "$content_remote" ]]; then
-                echo "No change in $file, skipping."
-                continue
-              fi
+            content_local_base64=$(cat "$file" | base64 -w 0)
+            if [[ "$content_local_base64" == "$content_remote" ]]; then
+              echo "No change in $file, skipping."
+              continue
             fi
       
             echo "Committing $file"
@@ -63,3 +55,4 @@ jobs:
               ${sha_remote:+-f sha=$sha_remote} \
               -f branch="$branch"
           done
+
