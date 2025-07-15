@@ -10,64 +10,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout only update.sh
+      - name: Checkout minimal (for access to script)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
-          sparse-checkout: |
-            update.sh
+          sparse-checkout: update.sh
           sparse-checkout-cone-mode: false
+          fetch-depth: 1
 
-      - name: Run update script
+      - name: Run update.sh to generate files
         run: ./update.sh
 
-      - name: Install GitHub CLI
-        run: sudo apt-get install gh -y
-
-      - name: Commit new or changed files via GitHub API safely
+      - name: Upload files using GitHub API
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          branch="${GITHUB_REF#refs/heads/}"
-      
-          find . -type f -not -path "./.git/*" -not -name ".gitkeep" | while read -r file; do
-            echo "Processing $file"
-      
-            # Get base64 content of local file
-            content=$(base64 -w 0 "$file")
-      
-            # Get remote file info; ignore errors if file doesn't exist
-            response=$(gh api -X GET "/repos/${{ github.repository }}/contents/$file?ref=$branch" || true)
-            sha_remote=$(echo "$response" | jq -r '.sha // empty')
-            content_remote=$(echo "$response" | jq -r '.content // empty' | tr -d '\n')
-      
-            # Skip commit if content is unchanged
-            if [ "$content" = "$content_remote" ]; then
-              echo "No changes in $file, skipping commit."
-              continue
-            fi
-      
-            echo "Committing $file"
-      
-            # Prepare JSON payload in a temp file
-            json_payload=$(mktemp)
-            jq -n \
-              --arg msg "Update $file" \
-              --arg content "$content" \
-              --arg branch "$branch" \
-              --arg sha "$sha_remote" \
-              '{
-                message: $msg,
-                content: $content,
-                branch: $branch
-              } + ( $sha | length > 0 and {sha: $sha} )' > "$json_payload"
-      
-            # Push commit with JSON payload input
-            gh api -X PUT \
+          # Set metadata
+          REPO="${{ github.repository }}"
+          BRANCH="main"
+          COMMIT_MSG="Automated file update via API"
+          
+          for file in $(find ./output_dir -type f); do
+            FILE_PATH="${file#./}"  # Remove ./ prefix
+            ENCODED_CONTENT=$(base64 -w 0 "$file")
+            FILE_NAME=$(basename "$file")
+
+            # Try to get the file's SHA if it exists
+            SHA=$(gh api \
               -H "Accept: application/vnd.github+json" \
-              "/repos/${{ github.repository }}/contents/$file" \
-              --input "$json_payload"
-      
-            rm "$json_payload"
+              repos/$REPO/contents/$FILE_PATH \
+              --jq '.sha' || true)
+
+            # Call the create/update endpoint
+            gh api --method PUT \
+              -H "Accept: application/vnd.github+json" \
+              repos/$REPO/contents/$FILE_PATH \
+              -f message="$COMMIT_MSG" \
+              -f content="$ENCODED_CONTENT" \
+              -f branch="$BRANCH" \
+              ${SHA:+-f sha=$SHA}
           done
+
 
