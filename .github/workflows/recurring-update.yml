@@ -35,35 +35,37 @@ jobs:
           COMMIT_MSG="Automated constellation data update via API"
 
           find . -type f \( -name "*.xml" -o -name "*.tle" \) | while read -r FILE; do
-            FILE_PATH="${FILE#./}"  # Strip ./ prefix
+            FILE_PATH="${FILE#./}"  # Remove ./ prefix
             ENCODED_CONTENT=$(base64 -w 0 "$FILE")
             JSON_BODY="payload.json"
 
-            # Get SHA if file exists
+            # Try to get SHA if the file exists
             SHA=$(gh api -H "Accept: application/vnd.github+json" \
                   repos/$REPO/contents/$FILE_PATH \
                   --jq .sha 2>/dev/null || true)
 
             echo "Uploading $FILE_PATH"
 
-            # Build JSON payload safely
-            jq -n \
-              --arg msg "$COMMIT_MSG" \
-              --arg content "$ENCODED_CONTENT" \
-              --arg branch "$BRANCH" \
-              --arg sha "$SHA" \
-              '{
-                message: $msg,
-                content: $content,
-                branch: $branch
-              } + (if $sha != "" then {sha: $sha} else {})' > "$JSON_BODY"
+            if [ -n "$SHA" ]; then
+              jq -n \
+                --arg message "$COMMIT_MSG" \
+                --arg content "$ENCODED_CONTENT" \
+                --arg branch "$BRANCH" \
+                --arg sha "$SHA" \
+                '{message: $message, content: $content, branch: $branch, sha: $sha}' \
+                > "$JSON_BODY"
+            else
+              jq -n \
+                --arg message "$COMMIT_MSG" \
+                --arg content "$ENCODED_CONTENT" \
+                --arg branch "$BRANCH" \
+                '{message: $message, content: $content, branch: $branch}' \
+                > "$JSON_BODY"
+            fi
 
-            # Upload via GitHub REST API
+            # Upload the file via GitHub REST API
             gh api --method PUT \
               -H "Accept: application/vnd.github+json" \
               --input "$JSON_BODY" \
               "repos/$REPO/contents/$FILE_PATH"
           done
-
-
-
