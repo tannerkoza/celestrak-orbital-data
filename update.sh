@@ -3,7 +3,7 @@
 YYYY=$(date -u +%Y)
 DOY=$(date -u +%j)
 
-CONSTELLATIONS=("globalstar" "iridium" "iridium-NEXT" "oneweb" "orbcomm" "starlink")
+CONSTELLATIONS=("globalstar" "iridium" "iridium-NEXT" "oneweb" "orbcomm" "starlink" "kuiper")
 FORMATS=("tle" "xml")
 
 for const in ${CONSTELLATIONS[@]}; do
