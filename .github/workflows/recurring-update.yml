@@ -30,28 +30,49 @@ jobs:
           COMMIT_MSG="Force update of constellation files"
           find . -type f \( -name "*.xml" -o -name "*.tle" \) | while read -r FILE; do
             FILE_PATH="${FILE#./}"  # Remove leading './' from path
-            ENCODED_CONTENT=$(base64 -w 0 "$FILE")
-            JSON_BODY="payload.json"
+            echo "Uploading $FILE_PATH (overwrite if exists)"
+            
+            # Base64 encode the file content
+            base64 -w 0 "$FILE" > encoded_content.tmp
+            
             # Fetch SHA if file exists; empty if not
             SHA=$(gh api -H "Accept: application/vnd.github+json" \
               repos/$REPO/contents/$FILE_PATH \
               --jq .sha 2>/dev/null || echo "")
-            echo "Uploading $FILE_PATH (overwrite if exists)"
+            
+            # Create JSON payload using a template file approach
+            cat > payload_template.json << 'EOF'
+{
+  "message": "",
+  "content": "",
+  "branch": ""
+}
+EOF
+            
+            # Build the JSON payload by reading from files
             if [ -z "$SHA" ]; then
-              jq -n \
+              jq \
                 --arg message "$COMMIT_MSG" \
-                --arg content "$ENCODED_CONTENT" \
                 --arg branch "$BRANCH" \
-                '{message: $message, content: $content, branch: $branch}' \
-                > payload.json
+                --rawfile content encoded_content.tmp \
+                '.message = $message | .content = $content | .branch = $branch' \
+                payload_template.json > payload.json
             else
-              jq -n \
+              cat > payload_template.json << 'EOF'
+{
+  "message": "",
+  "content": "",
+  "branch": "",
+  "sha": ""
+}
+EOF
+              jq \
                 --arg message "$COMMIT_MSG" \
-                --arg content "$ENCODED_CONTENT" \
                 --arg branch "$BRANCH" \
                 --arg sha "$SHA" \
-                '{message: $message, content: $content, branch: $branch, sha: $sha}' \
-                > payload.json
+                --rawfile content encoded_content.tmp \
+                '.message = $message | .content = $content | .branch = $branch | .sha = $sha' \
+                payload_template.json > payload.json
             fi
             
             # Actually upload the file
@@ -59,4 +80,7 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               repos/$REPO/contents/$FILE_PATH \
               --input payload.json
+              
+            # Clean up temporary files
+            rm -f encoded_content.tmp payload_template.json payload.json
           done
