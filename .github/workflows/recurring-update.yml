@@ -44,13 +44,13 @@ jobs:
             echo "Uploading: $FILE_PATH"
 
             # Upload using GitHub API
-            gh api --method PUT \
-              -H "Accept: application/vnd.github+json" \
-              repos/$REPO/contents/$FILE_PATH \
-              -f message="$COMMIT_MSG" \
-              -f content="$ENCODED_CONTENT" \
-              -f branch="$BRANCH" \
-              ${SHA:+-f sha=$SHA}
+          gh api --method PUT \
+            -H "Accept: application/vnd.github+json" \
+            repos/$REPO/contents/$FILE_PATH \
+            -f message="$COMMIT_MSG" \
+            -f content="$ENCODED_CONTENT" \
+            -f branch="$BRANCH" \
+            ${SHA:+-f "sha=$SHA"}
           done
 
 
