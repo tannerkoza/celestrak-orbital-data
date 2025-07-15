@@ -46,20 +46,19 @@ jobs:
 
             echo "Uploading $FILE_PATH (overwrite if exists)"
 
-            jq -n \
-              --arg message "$COMMIT_MSG" \
-              --arg content "$ENCODED_CONTENT" \
-              --arg branch "$BRANCH" \
-              --arg sha "$SHA" \
-              '{
-                message: $message,
-                content: $content,
-                branch: $branch
-              } + (if $sha != "" then {sha: $sha} else {})' \
-              > "$JSON_BODY"
-
-            gh api --method PUT \
-              -H "Accept: application/vnd.github+json" \
-              --input "$JSON_BODY" \
-              "repos/$REPO/contents/$FILE_PATH"
-          done
+            if [ -z "$SHA" ]; then
+              jq -n \
+                --arg message "$COMMIT_MSG" \
+                --arg content "$ENCODED_CONTENT" \
+                --arg branch "$BRANCH" \
+                '{message: $message, content: $content, branch: $branch}' \
+                > payload.json
+            else
+              jq -n \
+                --arg message "$COMMIT_MSG" \
+                --arg content "$ENCODED_CONTENT" \
+                --arg branch "$BRANCH" \
+                --arg sha "$SHA" \
+                '{message: $message, content: $content, branch: $branch, sha: $sha}' \
+                > payload.json
+            fi
