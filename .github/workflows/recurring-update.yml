@@ -10,37 +10,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout minimal (for access to script)
+      - name: Checkout only update.sh
         uses: actions/checkout@v4
         with:
-          sparse-checkout: update.sh
+          sparse-checkout: |
+            update.sh
           sparse-checkout-cone-mode: false
           fetch-depth: 1
 
-      - name: Run update.sh to generate files
-        run: ./update.sh
+      - name: Install GitHub CLI
+        run: sudo apt-get install -y gh
 
-      - name: Upload files using GitHub API
+      - name: Run update script
+        run: bash ./update.sh
+
+      - name: Upload files to GitHub via API
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Set metadata
           REPO="${{ github.repository }}"
           BRANCH="main"
-          COMMIT_MSG="Automated file update via API"
-          
-          for file in $(find ./output_dir -type f); do
-            FILE_PATH="${file#./}"  # Remove ./ prefix
-            ENCODED_CONTENT=$(base64 -w 0 "$file")
-            FILE_NAME=$(basename "$file")
+          COMMIT_MSG="Automated constellation data update via API"
 
-            # Try to get the file's SHA if it exists
-            SHA=$(gh api \
-              -H "Accept: application/vnd.github+json" \
+          find . -type f \( -name "*.xml" -o -name "*.tle" \) | while read -r FILE; do
+            FILE_PATH="${FILE#./}"  # Remove ./ prefix
+            ENCODED_CONTENT=$(base64 -w 0 "$FILE")
+
+            # Try to get current file SHA (if exists)
+            SHA=$(gh api -H "Accept: application/vnd.github+json" \
               repos/$REPO/contents/$FILE_PATH \
-              --jq '.sha' || true)
+              --jq .sha 2>/dev/null || true)
 
-            # Call the create/update endpoint
+            echo "Uploading: $FILE_PATH"
+
+            # Upload using GitHub API
             gh api --method PUT \
               -H "Accept: application/vnd.github+json" \
               repos/$REPO/contents/$FILE_PATH \
