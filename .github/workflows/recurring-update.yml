@@ -32,25 +32,32 @@ jobs:
           BRANCH="main"
           COMMIT_MSG="Automated constellation data update via API"
 
-          find . -type f \( -name "*.tle" \) | while read -r FILE; do
-            FILE_PATH="${FILE#./}"  # Remove ./ prefix
+          for FILE in $(find . -type f \( -name "*.xml" -o -name "*.tle" \)); do
+            FILE_PATH="${FILE#./}"
             ENCODED_CONTENT=$(base64 -w 0 "$FILE")
-
-            # Try to get current file SHA (if exists)
+            JSON_BODY="payload.json"
             SHA=$(gh api -H "Accept: application/vnd.github+json" \
-              repos/$REPO/contents/$FILE_PATH \
-              --jq .sha 2>/dev/null || true)
-
-            echo "Uploading: $FILE_PATH"
-
-            # Upload using GitHub API
-          gh api --method PUT \
-            -H "Accept: application/vnd.github+json" \
-            repos/$REPO/contents/$FILE_PATH \
-            -f message="$COMMIT_MSG" \
-            -f content="$ENCODED_CONTENT" \
-            -f branch="$BRANCH" \
-            ${SHA:+-f "sha=$SHA"}
-          done
+                  repos/$REPO/contents/$FILE_PATH \
+                  --jq .sha 2>/dev/null || true)
+          
+            echo "Uploading $FILE_PATH"
+          
+            # Build JSON payload
+            jq -n \
+              --arg msg "$COMMIT_MSG" \
+              --arg content "$ENCODED_CONTENT" \
+              --arg branch "$BRANCH" \
+              --argjson sha "$(jq -Rn --arg sha "$SHA" '$sha // empty')" \
+              '{
+                message: $msg,
+                content: $content,
+                branch: $branch
+              } + (if $sha != "" then {sha: $sha} else {} end)' > "$JSON_BODY"
+          
+            # Send it via gh api using --input
+            gh api --method PUT \
+              -H "Accept: application/vnd.github+json" \
+              --input "$JSON_BODY" \
+              "repos/$REPO/contents/$FILE_PATH"
 
 
