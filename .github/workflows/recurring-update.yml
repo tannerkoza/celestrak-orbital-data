@@ -25,6 +25,6 @@ jobs:
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
-          git add --sparse -A  # include new files outside sparse list
+          git add .  # include new files outside sparse list
           git diff --quiet || git commit -m "celestrak update"
           git push
