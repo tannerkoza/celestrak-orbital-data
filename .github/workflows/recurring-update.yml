@@ -1,28 +1,102 @@
 name: recurring-update
-
 on:
   workflow_dispatch:
   schedule:
     - cron: "*/15 * * * *"
-
 jobs:
   update:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout update.sh
+      - name: Checkout only update.sh
         uses: actions/checkout@v4
         with:
+          sparse-checkout: |
+            update.sh
+          sparse-checkout-cone-mode: false
           fetch-depth: 1
-
-      - name: Run update.sh
-        run: ./update.sh
-
-      - name: Stage and Commit Files (new or modified)
+      - name: Install GitHub CLI and jq
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
-          git config set advice.updateSparsePath false
-          git add .  # include new files outside sparse list
-          git diff --quiet || git commit -m "celestrak update"
-          git push
+          sudo apt-get update
+          sudo apt-get install -y gh jq
+      - name: Run update script
+        run: bash ./update.sh
+      - name: Upload only changed files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          BRANCH="main"
+          COMMIT_MSG="Add new constellation tles"
+          
+          find . -type f \( -name "*.xml" -o -name "*.tle" \) | while read -r FILE; do
+            FILE_PATH="${FILE#./}"
+            echo "Checking $FILE_PATH for changes..."
+            
+            # Calculate SHA256 hash of the new file
+            NEW_HASH=$(sha256sum "$FILE" | cut -d' ' -f1)
+            
+            # Get current file info from GitHub (including size and sha)
+            CURRENT_INFO=$(gh api -H "Accept: application/vnd.github+json" \
+              repos/$REPO/contents/$FILE_PATH 2>/dev/null || echo "null")
+            
+            if [ "$CURRENT_INFO" = "null" ]; then
+              echo "File $FILE_PATH doesn't exist in repo, uploading..."
+            else
+              # Get current file size and download URL
+              CURRENT_SIZE=$(echo "$CURRENT_INFO" | jq -r '.size')
+              DOWNLOAD_URL=$(echo "$CURRENT_INFO" | jq -r '.download_url')
+              
+              # Get new file size
+              NEW_SIZE=$(stat -c%s "$FILE")
+              
+              # Quick size check first
+              if [ "$CURRENT_SIZE" != "$NEW_SIZE" ]; then
+                echo "File size changed ($CURRENT_SIZE -> $NEW_SIZE), uploading..."
+              else
+                # Same size, check content hash
+                CURRENT_HASH=$(curl -s "$DOWNLOAD_URL" | sha256sum | cut -d' ' -f1)
+                
+                if [ "$CURRENT_HASH" = "$NEW_HASH" ]; then
+                  echo "No changes in $FILE_PATH, skipping..."
+                  continue
+                else
+                  echo "Content hash changed, uploading..."
+                fi
+              fi
+            fi
+            
+            # File is new or changed, upload it
+            echo "Uploading $FILE_PATH..."
+            
+            # Base64 encode the new content
+            base64 -w 0 "$FILE" > encoded_content.tmp
+            
+            # Get SHA for the file (needed for updates)
+            SHA=$(echo "$CURRENT_INFO" | jq -r '.sha // empty')
+            
+            # Create JSON payload
+            if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
+              jq -n \
+                --arg message "$COMMIT_MSG" \
+                --arg branch "$BRANCH" \
+                --rawfile content encoded_content.tmp \
+                '{message: $message, content: $content, branch: $branch}' \
+                > payload.json
+            else
+              jq -n \
+                --arg message "$COMMIT_MSG" \
+                --arg branch "$BRANCH" \
+                --arg sha "$SHA" \
+                --rawfile content encoded_content.tmp \
+                '{message: $message, content: $content, branch: $branch, sha: $sha}' \
+                > payload.json
+            fi
+            
+            # Upload the file
+            gh api -X PUT \
+              -H "Accept: application/vnd.github+json" \
+              repos/$REPO/contents/$FILE_PATH \
+              --input payload.json
+              
+            rm -f encoded_content.tmp payload.json
+          done
