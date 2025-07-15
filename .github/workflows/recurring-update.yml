@@ -32,7 +32,7 @@ jobs:
           BRANCH="main"
           COMMIT_MSG="Automated constellation data update via API"
 
-          find . -type f \( -name "*.xml" -o -name "*.tle" \) | while read -r FILE; do
+          find . -type f \( -name "*.tle" \) | while read -r FILE; do
             FILE_PATH="${FILE#./}"  # Remove ./ prefix
             ENCODED_CONTENT=$(base64 -w 0 "$FILE")
 
