@@ -42,7 +42,7 @@ Browse and download individual files directly from the repository.
 
 ### Clone Repository
 ```bash
-git clone https://github.com/tannerkoza/celestrak-orbital-data.git
+git clone https://github.com/navsuite/celestrak-orbital-data.git
 cd celestrak-orbital-data
 ```
 
@@ -50,7 +50,7 @@ cd celestrak-orbital-data
 Use the GitHub API to access files programmatically:
 ```bash
 curl -H "Accept: application/vnd.github.v3.raw" \
-  https://api.github.com/repos/tannerkoza/celestrak-orbital-data/contents/[filename]
+  https://api.github.com/repos/navsuite/celestrak-orbital-data/contents/[filename]
 ```
 
 ## 🎯 Use Cases
